@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ResearchRelay Admin (testnet)</title>
+    <!-- Official Telegram Mini Apps bridge. Not an npm package — Telegram
+         serves this script itself and expects it loaded this way.
+         https://core.telegram.org/bots/webapps#initializing-mini-apps -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --tg-bg: #0b0e14;
+        --tg-text: #d8dee9;
+        --tg-hint: #9aa5b1;
+        --tg-link: #7aa2f7;
+        --tg-button: #3b5bdb;
+        --tg-button-text: #ffffff;
+        --tg-secondary-bg: #11151c;
+      }
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--tg-bg); color: var(--tg-text); max-width: 760px;
+        margin: 0 auto; padding: 24px 16px 80px;
+      }
+      h1 { font-size: 18px; }
+      h3 { color: var(--tg-hint); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+      .banner {
+        background: #3a1f1f; border: 1px solid #a33; color: #f5c2c2;
+        padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 20px;
+      }
+      fieldset { border: 1px solid #2a2f3a; border-radius: 8px; margin-bottom: 16px; padding: 12px 14px; }
+      legend { padding: 0 6px; color: var(--tg-link); font-size: 13px; }
+      label { display: block; font-size: 12px; color: var(--tg-hint); margin: 8px 0 2px; }
+      input, textarea {
+        width: 100%; box-sizing: border-box; background: var(--tg-secondary-bg); color: var(--tg-text);
+        border: 1px solid #2a2f3a; border-radius: 4px; padding: 6px 8px; font-family: inherit; font-size: 13px;
+      }
+      button {
+        background: var(--tg-button); color: var(--tg-button-text); border: none; border-radius: 4px;
+        padding: 8px 14px; font-size: 13px; cursor: pointer; margin-top: 10px;
+      }
+      button:hover { filter: brightness(1.1); }
+      button:disabled { background: #333; cursor: not-allowed; filter: none; }
+      #status { font-size: 12px; color: var(--tg-hint); margin-bottom: 16px; }
+      #log { white-space: pre-wrap; font-size: 12px; background: var(--tg-secondary-bg); border: 1px solid #2a2f3a;
+        border-radius: 6px; padding: 10px; max-height: 300px; overflow-y: auto; }
+      #ton-connect-button { margin-bottom: 16px; }
+      .state-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; }
+      .state-grid dt { color: var(--tg-hint); }
+      .state-grid dd { margin: 0; word-break: break-all; }
+      #lockScreen {
+        position: fixed; inset: 0; background: var(--tg-bg); color: var(--tg-text);
+        display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center;
+        font-family: ui-monospace, monospace; font-size: 14px; z-index: 999;
+      }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="lockScreen" class="hidden">
+      <div>
+        🔒 This panel is restricted to its owner's Telegram account.<br />
+        <span id="lockReason" style="color: var(--tg-hint); font-size: 12px;"></span>
+      </div>
+    </div>
+
+    <div id="app">
+      <h1>ResearchRelay Admin</h1>
+      <div class="banner">
+        TESTNET ONLY. This controls a reconstructed real-world drainer contract
+        used for security research. Connect only your own test wallet — never
+        distribute this bot/link or ask anyone else to connect theirs.
+      </div>
+
+      <div id="ton-connect-button"></div>
+      <div id="status">not connected</div>
+
+      <fieldset>
+        <legend>Contract address (testnet)</legend>
+        <label for="relayAddr">ResearchRelay address</label>
+        <input id="relayAddr" placeholder="kQ... (testnet address)" />
+        <label for="apiKey">TON Center API key (optional — raises rate limits)</label>
+        <input id="apiKey" placeholder="leave blank to use anonymous rate limit" />
+        <button id="btnRefreshState">Refresh state</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>On-chain state (read-only, parsed from storage cell)</legend>
+        <dl class="state-grid" id="stateGrid">
+          <dt>status</dt><dd id="stNotLoaded">not loaded yet</dd>
+        </dl>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::0xabcd1f13 — sweep (owner-only)</legend>
+        <label for="sweepMode">send_mode (byte)</label>
+        <input id="sweepMode" value="160" />
+        <button id="btnSweep">Send sweep</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::0xabcd0f13 — forward jetton (owner-only)</legend>
+        <label for="fwdJettonWallet">jetton_wallet_addr</label>
+        <input id="fwdJettonWallet" />
+        <label for="fwdDest">destination</label>
+        <input id="fwdDest" />
+        <label for="fwdAmount">amount (nanojetton)</label>
+        <input id="fwdAmount" value="0" />
+        <button id="btnForwardJetton">Send forward-jetton</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::13371337 — raw relay (owner-only)</legend>
+        <label for="rawDest">dest</label>
+        <input id="rawDest" />
+        <label for="rawValue">value (nanoton)</label>
+        <input id="rawValue" value="10000000" />
+        <label for="rawMode">send_mode</label>
+        <input id="rawMode" value="0" />
+        <label for="rawBodyHex">inner body cell, as hex-BoC (optional; empty cell if blank)</label>
+        <input id="rawBodyHex" />
+        <button id="btnRawRelay">Send raw relay</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::12192683 — update config (owner-only)</legend>
+        <label for="cfgNewOwner">new_owner</label>
+        <input id="cfgNewOwner" />
+        <label for="cfgFlag">flag</label>
+        <input id="cfgFlag" value="false" />
+        <label for="cfgAllowList">config_dict allow-list addresses (comma-separated, optional)</label>
+        <input id="cfgAllowList" />
+        <button id="btnUpdateConfig">Send update-config</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::0xabcdef13 — signed trigger (signature-gated, not owner-gated)</legend>
+        <label for="trigQueryId">query_id</label>
+        <input id="trigQueryId" value="1" />
+        <label for="trigForwardTarget">forward_target address</label>
+        <input id="trigForwardTarget" />
+        <label for="trigSigHex">signature (128 hex chars = 64 bytes, signed OFFLINE over hash(your wallet address))</label>
+        <input id="trigSigHex" />
+        <button id="btnSignedTrigger">Send signed trigger</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>op::0x7362d09c — transfer_notification</legend>
+        <label for="tnQueryId">query_id</label>
+        <input id="tnQueryId" value="1" />
+        <label for="tnAmount">amount (nanojetton)</label>
+        <input id="tnAmount" value="0" />
+        <label for="tnFromAddress">from_address</label>
+        <input id="tnFromAddress" />
+        <label for="tnSigHex">signature (128 hex chars, signed OFFLINE over hash(your wallet address); leave blank to force the unauthorized/fallback path)</label>
+        <input id="tnSigHex" />
+        <label for="tnRedirect">redirect address (ref3; blank = empty ref3 -> bytecode bails out with no message)</label>
+        <input id="tnRedirect" />
+        <button id="btnTransferNotif">Send transfer_notification</button>
+      </fieldset>
+
+      <h3>Log</h3>
+      <div id="log"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
